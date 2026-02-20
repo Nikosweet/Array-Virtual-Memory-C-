@@ -12,3 +12,4 @@
 /home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.pdb
 /home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.genruntimeconfig.cache
 /home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/ref/CSharp labs.dll
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.sourcelink.json
