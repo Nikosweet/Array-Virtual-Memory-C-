@@ -1,0 +1,14 @@
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/bin/Debug/net10.0/CSharp labs
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/bin/Debug/net10.0/CSharp labs.deps.json
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/bin/Debug/net10.0/CSharp labs.runtimeconfig.json
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/bin/Debug/net10.0/CSharp labs.dll
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/bin/Debug/net10.0/CSharp labs.pdb
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.GeneratedMSBuildEditorConfig.editorconfig
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.AssemblyInfoInputs.cache
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.AssemblyInfo.cs
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.csproj.CoreCompileInputs.cache
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.dll
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/refint/CSharp labs.dll
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.pdb
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/CSharp labs.genruntimeconfig.cache
+/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/obj/Debug/net10.0/ref/CSharp labs.dll

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "4N4ZcvFAP1g=",
+  "success": true,
+  "projectFilePath": "/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/CSharp labs.csproj",
+  "expectedPackageFiles": [
+    "/home/nikosweet/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.3/microsoft.aspnetcore.app.ref.10.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}
