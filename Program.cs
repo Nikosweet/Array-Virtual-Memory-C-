@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Text;
 
 namespace Program {
     class Program {
@@ -8,11 +9,12 @@ namespace Program {
             private char type;
             private short bitmapSize;
             private long arrSize;
-            private byte headerSize;
+            private byte headerSize = 2 + 8 + 1;
             
             private long pageCount;
             private const short PAGE_SIZE = 512;
             private byte elementMemory;
+            private short elementsOnPage;
             
             private FileStream filestream;
             private BinaryWriter binarywriter;
@@ -32,20 +34,20 @@ namespace Program {
                     this.type = type;
                     switch (type) {
                         case 'I': elementMemory = 4; break;
-                        case 'C': elementMemory = 1; break;
+                        case 'C': elementMemory = 4; break;
                         case 'V': elementMemory = 8; break;
                     }
                 }
                 
-                else throw new ArgumentException("Array type is incorrect");
-                
-                headerSize = 2 + 8 + 1;
-                pageCount = arrSize / (PAGE_SIZE / elementMemory);
-                bitmapSize = (short)(PAGE_SIZE / elementMemory / 8);
+                else throw new ArrayTypeMismatchException("Array type is incorrect");
+
+                elementsOnPage = (short)(PAGE_SIZE / elementMemory);
+                pageCount = arrSize / (elementsOnPage);
+                bitmapSize = (short)(elementsOnPage / 8);
                 if (File.Exists(filepath)) {
                     filestream = new FileStream(filepath, FileMode.Open, FileAccess.ReadWrite);
-                    binarywriter = new BinaryWriter(filestream, System.Text.Encoding.ASCII);
-                    binaryreader = new BinaryReader(filestream, System.Text.Encoding.ASCII);
+                    binarywriter = new BinaryWriter(filestream, System.Text.Encoding.UTF32);
+                    binaryreader = new BinaryReader(filestream, System.Text.Encoding.UTF32);
                 }
                 else CreateFile(filepath);
             }
@@ -53,15 +55,17 @@ namespace Program {
             
             private void CreateFile(string filepath) {
                 filestream = new FileStream(filepath, FileMode.Create, FileAccess.ReadWrite);
-                binarywriter = new BinaryWriter(filestream, System.Text.Encoding.ASCII);
-                binaryreader = new BinaryReader(filestream, System.Text.Encoding.ASCII);
-                binarywriter.Write(['V', 'M']);
+                binarywriter = new BinaryWriter(filestream, System.Text.Encoding.UTF32);
+                binaryreader = new BinaryReader(filestream, System.Text.Encoding.UTF32);
+                byte V = (byte)'V';
+                byte M = (byte)'M';
+                binarywriter.Write([V, M]);
                 binarywriter.Write(arrSize);
-                binarywriter.Write(type);
+                binarywriter.Write((byte)type);
                 binarywriter.Flush();
                 filestream.Flush();
                 for (long i = 0; i < pageCount; i++) {
-                    Page page = new Page(i, elementMemory);
+                    Page page = new Page(i, elementMemory, type);
                     SavePage(page);
                 }
             }
@@ -70,19 +74,30 @@ namespace Program {
             private Page? LoadPage(long pageNumber) {
                 foreach (long key in pageCache.Keys) if (key == pageNumber) return pageCache[key];
                 
-                binarywriter.BaseStream.Seek(headerSize + pageNumber * (512L + 16L), SeekOrigin.Begin);
+                binarywriter.BaseStream.Seek(headerSize + pageNumber * (PAGE_SIZE + bitmapSize), SeekOrigin.Begin);
                 byte[] bitmap = binaryreader.ReadBytes(bitmapSize);
-                
-                int[] data = new int[128];
-                for (int i = 0; i < 128; i++) 
-                    data[i] = binaryreader.ReadInt32();
-                Page page = new Page(pageNumber, bitmap, data, elementMemory);
-                
-                if (pageCache.Count == MAX_CACHE_SIZE) RemoveOldPage();
-                
-                pageCache.Add(page.PageNumber, page);
-                
-                return page;
+                switch (type) {
+                    case 'I':
+                        int[] intData = new int[elementsOnPage];
+                        for (int i = 0; i < elementsOnPage; i++) 
+                            intData[i] = binaryreader.ReadInt32();
+                        Page intPage = new Page(pageNumber, bitmap, intData);
+                        if (pageCache.Count == MAX_CACHE_SIZE) RemoveOldPage();
+                        pageCache.Add(intPage.PageNumber, intPage);
+                        return intPage;
+                    case 'C':
+                        char[] charData = new char[elementsOnPage];
+                        for (int i = 0; i < elementsOnPage; i++) 
+                            charData[i] = binaryreader.ReadChar();
+                        Page charPage = new Page(pageNumber, bitmap, charData);
+                        if (pageCache.Count == MAX_CACHE_SIZE) RemoveOldPage();
+                        pageCache.Add(charPage.PageNumber, charPage);
+                        return charPage;
+                    case 'V':
+                        break;
+                }
+
+                throw new ArrayTypeMismatchException("Array type is incorrect");
             }
 
             private void RemoveOldPage() {
@@ -104,43 +119,62 @@ namespace Program {
 
                 long pageNumber = page.PageNumber;
                 
-                binarywriter.BaseStream.Seek(headerSize + pageNumber * (512L + 16L), SeekOrigin.Begin);
+                binarywriter.BaseStream.Seek(headerSize + pageNumber * (PAGE_SIZE + bitmapSize), SeekOrigin.Begin);
                 for (short i = 0; i < bitmapSize; i++) binarywriter.Write(page.Bitmap[i]);
-                for (short i = 0; i < PAGE_SIZE/elementMemory; i++) binarywriter.Write(page.Data[i]);
+                switch (type) {
+                    case 'I': for (short i = 0; i < elementsOnPage; i++) binarywriter.Write(page.IntData[i]); break;
+                    case 'C': for (short i = 0; i < elementsOnPage; i++) binarywriter.Write(page.CharData[i]); break;
+                    case 'V': for (short i = 0; i < elementsOnPage; i++) binarywriter.Write(page.CharData[i]); break;
+                }
                 binarywriter.Flush();
             }
 
-            private void SetValue(long key, long index, int value) {
+            private void SetValue(long key, long index, dynamic value) {
                 pageCache[key].Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (pageCache[key].Data[index % 128] == value) return;
                             
-                byte bytePos = (byte)(index % 128 / 8);
-                byte bitPos = (byte)(index % 128 % 8);
+                byte bytePos = (byte)(index % elementsOnPage / 8);
+                byte bitPos = (byte)(index % elementsOnPage % 8);
                 pageCache[key].Bitmap[bytePos] |= (byte)(1 << bitPos);
-                            
-                pageCache[key].Data[index % 128] = value;
+                switch (type) {
+                    case 'I': 
+                        if (pageCache[key].IntData[index % 128] == value) return;
+                        pageCache[key].IntData[index % elementsOnPage] = value; break;
+                    case 'C': 
+                        if (pageCache[key].CharData[index % 128] == value) return;
+                        pageCache[key].CharData[index % elementsOnPage] = value; break;
+                    case 'V': break;
+                }
                 pageCache[key].Flag = (byte)1;
             }
             
             
-            public int this[long index] {
+            public dynamic this[long index] {
                 get {
                     if (index >= arrSize || index < 0L) throw new ArgumentOutOfRangeException();
-                    long pageNumber = index / (byte)128;
+                    long pageNumber = index / (byte)(elementsOnPage);
                     foreach (long key in pageCache.Keys)
                         if (key == pageNumber) {
                             pageCache[key].Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                            return pageCache[key].Data[index % 128];
+                            switch (type) {
+                                case 'I': return pageCache[key].IntData[index % elementsOnPage]; break;
+                                case 'C': return pageCache[key].CharData[index % elementsOnPage]; break;
+                                case 'V': return pageCache[key].LongData[index % elementsOnPage]; break;
+                            }
                         }
                     
                     Page page = LoadPage(pageNumber) ?? throw new InvalidDataException("Internal data error");
-                    return page.Data[index % 128];
+                    switch (type) {
+                        case 'I': return page.IntData[index % elementsOnPage];
+                        case 'C': return page.CharData[index % elementsOnPage];
+                        case 'V': break;
+                    }
 
+                    throw new ArrayTypeMismatchException("Array type is incorrect");
                 }
                 
                 set {
                     if (index >= arrSize || index < 0) throw new ArgumentOutOfRangeException();
-                    long pageNumber = index / 128;
+                    long pageNumber = index / elementsOnPage;
                     foreach (long key in pageCache.Keys)
                         if (key == pageNumber) {
                             SetValue(key, index, value);
@@ -153,8 +187,9 @@ namespace Program {
                     SetValue(pageNumber, index, value);
                 }
             }
+            
             public void Close() {
-                foreach(int key in pageCache.Keys) SavePage(pageCache[key]);
+                foreach(byte key in pageCache.Keys) SavePage(pageCache[key]);
                 binarywriter.Close();
                 binaryreader.Close();
                 filestream.Close();
@@ -165,22 +200,44 @@ namespace Program {
                 public byte Flag;
                 public int Time;
                 public readonly byte[] Bitmap;
-                public readonly int[] Data;
 
-                public Page(long pageNumber, byte elementMemory) {
+                public int[]? IntData;
+                public char[]? CharData;
+                public long[]? LongData;
+                
+                public Page(long pageNumber, byte elementMemory, char type) {
                     PageNumber = pageNumber;
                     Flag = (byte)0;
                     Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     Bitmap = new byte[PAGE_SIZE/elementMemory/8];
-                    Data = new int[128];
+                    switch (type) {
+                        case 'I': IntData = new int[128]; break;
+                        case 'C': CharData = new char[128]; break;
+                        case 'V': LongData = new long[64]; break;
+                    }
                 }
                 
-                public Page(long pageNumber, byte[] bitmap, int[] data, byte elementMemory) {
+                public Page(long pageNumber, byte[] bitmap, int[] data) {
                     PageNumber = pageNumber;
                     Flag = (byte)0;
                     Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     Bitmap = bitmap;
-                    Data = data;
+                    IntData = data;
+                }
+                public Page(long pageNumber, byte[] bitmap, char[] data) {
+                    PageNumber = pageNumber;
+                    Flag = (byte)0;
+                    Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    Bitmap = bitmap;
+                    CharData = data;
+                }
+                
+                public Page(long pageNumber, byte[] bitmap, long[] data) {
+                    PageNumber = pageNumber;
+                    Flag = (byte)0;
+                    Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    Bitmap = bitmap;
+                    LongData = data;
                 }
             }
         }
@@ -188,15 +245,23 @@ namespace Program {
         
         static void Main(string[] args) {
             string filepath = @"/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs/swap.bin";
-            VirtualMemory MyFile = new VirtualMemory(filepath);
-            MyFile[127] = Int32.MaxValue;
-            MyFile[128] = Int32.MaxValue; 
-            MyFile[0] = Int32.MaxValue;
-            MyFile[255] = Int32.MaxValue;
-            MyFile[256] = Int32.MaxValue;
+            VirtualMemory MyFile = new VirtualMemory(filepath, type: 'C');
+            // MyFile[127] = Int32.MaxValue;
+            // MyFile[128] = Int32.MaxValue; 
+            // MyFile[0] = Int32.MaxValue;
+            // MyFile[255] = Int32.MaxValue;
+            // MyFile[256] = Int32.MaxValue;
+            // for (int i = 0; i < 4000; i+=2) {
+            //     MyFile[i] = Int32.MaxValue;
+            // }
             for (int i = 0; i < 4000; i+=2) {
-                MyFile[i] = Int32.MaxValue;
+                MyFile[i] = 'F';
             }
+            MyFile[127] = 'A';
+            MyFile[128] = 'B'; 
+            MyFile[0] = 'E';
+            MyFile[255] = 'D';
+            MyFile[256] = 'E';
             Console.Write(MyFile[0]); 
             Console.Write(MyFile[127]);
             Console.Write(MyFile[128]);
