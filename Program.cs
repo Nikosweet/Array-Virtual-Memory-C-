@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Text;
 
 namespace Program {
     class Program {
@@ -24,7 +25,7 @@ namespace Program {
             private BinaryReader? binarystringreader;
 
             private Dictionary<long, Page> pageCache = new Dictionary<long, Page>();
-            private const int MAX_CACHE_SIZE = 1;
+            private const int MAX_CACHE_SIZE = 30;
 
 
 
@@ -54,11 +55,12 @@ namespace Program {
                 pageCount = arrSize / (elementsOnPage);
                 bitmapSize = (short)(elementsOnPage / 8);
                 if (File.Exists(filepath + "/swap.bin")) {
-                    filestream = new FileStream(filepath + "/swap.bin", FileMode.Open, FileAccess.ReadWrite);
+                    Console.WriteLine("hello");
+                    filestream = new FileStream(filepath + ".bin", FileMode.Open, FileAccess.ReadWrite);
                     binarywriter = new BinaryWriter(filestream, Encoding.UTF32);
                     binaryreader = new BinaryReader(filestream, Encoding.UTF32);
                     if (type == 'V') {
-                        stringfilestream = new FileStream(filepath + "/string.bin", FileMode.Create,
+                        stringfilestream = new FileStream(filepath + "strings.bin", FileMode.Open,
                             FileAccess.ReadWrite);
                         binarystringreader = new BinaryReader(stringfilestream, Encoding.UTF32);
                         binarystringwriter = new BinaryWriter(stringfilestream, Encoding.UTF32);
@@ -69,7 +71,7 @@ namespace Program {
 
 
             private void CreateFile() { 
-                filestream = new FileStream(filepath + "/swap.bin", FileMode.Create, FileAccess.ReadWrite);
+                filestream = new FileStream(filepath + ".bin", FileMode.Create, FileAccess.ReadWrite);
                 binarywriter = new BinaryWriter(filestream, Encoding.UTF32);
                 binaryreader = new BinaryReader(filestream, Encoding.UTF32);
                 const byte V = (byte)'V';
@@ -81,7 +83,7 @@ namespace Program {
                     case 'C': binarywriter.Write(stringLength); break;
                     case 'V':
                         binarywriter.Write(stringLength);
-                        stringfilestream = new FileStream(filepath + "/string.bin", FileMode.Create,
+                        stringfilestream = new FileStream(filepath + "strings.bin", FileMode.Create,
                             FileAccess.ReadWrite);
                         binarystringreader = new BinaryReader(stringfilestream, Encoding.UTF32);
                         binarystringwriter = new BinaryWriter(stringfilestream, Encoding.UTF32);
@@ -101,19 +103,17 @@ namespace Program {
                 int strLength = binarystringreader.ReadInt32();
                 char[] str = new char[strLength];
                 for (int i = 0; i < strLength; i++) str[i] = binarystringreader.ReadChar();
+
                 return new string(str);
             }
 
-            private void SaveString(long reference, string str) {
+            private long WriteString(string str) {
+                long reference = stringfilestream.Length;
+                Console.WriteLine($"reference: {reference}, str.Length: {str.Length}, str: {str}");
                 binarystringwriter.BaseStream.Seek(reference, SeekOrigin.Begin);
-                int previousStringLength = binarystringreader.ReadInt32();
-                binarystringwriter.BaseStream.Seek(-1, SeekOrigin.Current);
-                binarystringwriter.Write(reference);
-                for (int i = 0; i < str.Length; i++) binarystringwriter.Write(str[i]);
-                int difference;
-                if (previousStringLength - str.Length > 0) difference = previousStringLength - str.Length;
-                else difference = 0;
-                for (int i = 0; i < difference * 4; i++) binarystringwriter.Write((byte)0);
+                binarystringwriter.Write(str.Length);
+                foreach (char i in str) binarystringwriter.Write(i);
+                return reference;
             }
 
         private Page LoadPage(long pageNumber) {
@@ -228,16 +228,14 @@ namespace Program {
                         break;
                     
                     case 'V':
-                        long reference = pageCache[key].LongData[index % 128];
-
-                        string str = LoadString(reference);
-           
-
-                        if (str == value) return;
-                        if (value.Length > stringLength) throw new ArgumentOutOfRangeException();
-                        SaveString(reference, str);
+                        if (value.Length > stringLength) throw new ValidationException("String is too long");
+                        pageCache[key].Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        byte byteVarcharPos = (byte)(index % elementsOnPage / 8);
+                        byte bitVarcharPos = (byte)(index % elementsOnPage % 8);
+                        pageCache[key].Bitmap[byteVarcharPos] |= (byte)(1 << bitVarcharPos);
+                        long newReference = WriteString(value);
+                        pageCache[key].LongData[index % elementsOnPage] = newReference;
                         pageCache[key].Flag = 1;
-
                         break;
                 }
             }
@@ -304,7 +302,7 @@ namespace Program {
                     long pageNumber = index / elementsOnPage;
                     foreach (long key in pageCache.Keys)
                         if (key == pageNumber) {
-                            SetValue(key, index, value);
+                            SetValue(pageNumber, index, value);
                             return;
                         }
                     
@@ -376,53 +374,7 @@ namespace Program {
         
         static void Main() {
             string filepath = @"/home/nikosweet/Desktop/Code/C# labs/CSharp labs/CSharp labs";
-            // VirtualMemory MyFile = new VirtualMemory(filepath);
-            // MyFile[127] = Int32.MaxValue;
-            // MyFile[128] = Int32.MaxValue; 
-            // MyFile[0] = Int32.MaxValue;
-            // MyFile[255] = Int32.MaxValue;
-            // MyFile[256] = Int32.MaxValue;
-            // // for (int i = 0; i < 4000; i+=2) {
-            //     MyFile[i] = Int32.MaxValue;
-            // }
-            VirtualMemory myFile = new VirtualMemory(filepath, type: 'C', stringLength: 300);
-            //
-            // // MyFile[0] = "load";
-            // // MyFile[1] = "up";
-            // // MyFile[2] = "on";
-            // // MyFile[3] = "guns";
-            string mystr = "";
-            for (int i = 0; i < 300; i++)
-                mystr += "f";
-            string mystr2 = "";
-            for (int i = 0; i < 299; i++)
-                mystr2 += "g";
-            myFile[0] = mystr;
-            myFile[1] = mystr2;
-            myFile[2] = mystr;
-            myFile[3] = mystr2;
-            myFile[4] = mystr;
-            myFile[5] = mystr2;
             
-            // for (int i = 0; i < 4000; i+=2) {
-            //     MyFile[i] = "bring";
-            // }
-            
-            // VirtualMemory MyFile = new VirtualMemory(filepath, type: 'V');
-            // MyFile[127] = "ABCDE";
-            // MyFile[128] = "FGHIJ"; 
-            // MyFile[0] = "EAAA";
-            // MyFile[256] = "EW";
-            // for (int i = 0; i < 4000; i+=2) {
-            //     MyFile[i] = "HOP HEY LALALAY";
-            // }
-            //
-            Console.WriteLine(myFile[0]); 
-            Console.WriteLine(myFile[1]);
-            // Console.Write(MyFile[127]);
-            // Console.Write(MyFile[128]);
-            // Console.Write(MyFile[257]);
-            myFile.Close();
         }   
     }
 }
