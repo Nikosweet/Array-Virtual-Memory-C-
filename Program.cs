@@ -91,7 +91,8 @@ namespace Program {
                     case 'V':
                         binarywriter.Write(stringLength);
                         elementMemory = 8;
-                        FileStream stringfilestream = new FileStream(filepath + "strings.bin", FileMode.Create, FileAccess.Read);
+                        FileStream stringfilestream = new FileStream(filepath + "strings.bin", FileMode.Create, FileAccess.ReadWrite);
+                        stringfilestream.Close();
                         break;
                 }
                 
@@ -112,6 +113,7 @@ namespace Program {
                             break;
                     }
                 }
+                
                 binarywriter.Close();
                 filestream.Close();
             }
@@ -450,13 +452,33 @@ namespace Program {
         }
 
         static string[] ParseCommand(string input) {
-            var matches = Regex.Matches(input, @"[\""].+?[\""]|[^ ]+");
-            string[] result = new string[matches.Count];
-            for (int i = 0; i < matches.Count; i++) {
-                result[i] = matches[i].Value.Trim('"');
+            var result = new List<string>();
+            bool inQuotes = false;
+            string current = "";
+            
+            for (int i = 0; i < input.Length; i++) {
+                char c = input[i];
+                
+                if (c == '"') {
+                    inQuotes = !inQuotes;
+                    current += c;
+                }
+                else if (c == ' ' && !inQuotes) {
+                    if (!string.IsNullOrEmpty(current)) {
+                        result.Add(current);
+                        current = "";
+                    }
+                }
+                else {
+                    current += c;
+                }
             }
-
-            return result;
+            
+            if (!string.IsNullOrEmpty(current)) {
+                result.Add(current);
+            }
+            
+            return result.ToArray();
         }
 
         static void HandleHelp() {
@@ -471,11 +493,10 @@ namespace Program {
                 "  input(index, value) - input a value to specified index\n" +
                 "    Note: string values must be in quotes\n" +
                 "  print(index) - print value at specified index\n" +
-                "  help [filename] - show this help or save to file\n" +
+                "  help - show this help\n" +
                 "  exit - save files and close program\n\n"
             );
         }
-
 
         static void HandleCreate(string[] parts) {
             if (parts.Length < 2)
@@ -504,7 +525,6 @@ namespace Program {
                     if (int.TryParse(lengthStr, out int length)) {
                         Console.WriteLine($"Creating char({length}) array file: {filename}");
                         VirtualMemory.CreateFile(filename, 'C', length);
-
                     }
                 }
             }
@@ -520,7 +540,6 @@ namespace Program {
                 }
             }
             else throw new ArgumentException($"Unknown type: {typePart}");
-
         }
 
         static VirtualMemory HandleOpen(string[] parts) {
@@ -533,52 +552,92 @@ namespace Program {
         }
 
         static void HandleInput(string[] parts, VirtualMemory file) {
+            if (file == null)
+                throw new InvalidOperationException("No file is open. Use 'open' command first.");
+                
             if (parts.Length < 2)
                 throw new ArgumentException("input command requires (index, value)");
 
-            Console.WriteLine($"DEBUG - parts: {string.Join(" | ", parts)}");
+            string argsString = string.Join(" ", parts.Skip(1));
             
-            string args = parts[1];
-
-            int commaPos = args.IndexOf(',');
-            if (commaPos == -1)
-                throw new ArgumentException("Invalid input format. Use: input(index, value)");
+            argsString = argsString.Trim();
             
+            int openParenIndex = argsString.IndexOf('(');
+            int closeParenIndex = argsString.LastIndexOf(')');
             
+            if (openParenIndex == -1 || closeParenIndex == -1)
+                throw new ArgumentException("Invalid format. Use: input(index, value) or input (index, value)");
             
-            string indexStr = args.Substring(0, commaPos).Trim();
-            string valueStr = args.Substring(commaPos + 1).Trim();
-
-            if (indexStr.StartsWith("("))
-                indexStr = indexStr.Substring(1);
-            if (valueStr.EndsWith(")"))
-                valueStr = valueStr.Substring(0, valueStr.Length - 1);
-
+            string innerContent = argsString.Substring(openParenIndex + 1, closeParenIndex - openParenIndex - 1).Trim();
+            
+            int commaIndex = -1;
+            bool inQuotes = false;
+            for (int i = 0; i < innerContent.Length; i++) {
+                if (innerContent[i] == '"') {
+                    inQuotes = !inQuotes;
+                }
+                else if (innerContent[i] == ',' && !inQuotes) {
+                    commaIndex = i;
+                    break;
+                }
+            }
+            
+            if (commaIndex == -1)
+                throw new ArgumentException("Missing comma between index and value");
+            
+            // Извлекаем индекс и значение
+            string indexStr = innerContent.Substring(0, commaIndex).Trim();
+            string valueStr = innerContent.Substring(commaIndex + 1).Trim();
+            
             if (!int.TryParse(indexStr, out int index))
-                throw new ArgumentException($"Invalid index: {indexStr}");
-
+                throw new ArgumentException($"Invalid index: '{indexStr}'");
+            
+            if ((valueStr.StartsWith("\"") && valueStr.EndsWith("\""))) {
+                valueStr = valueStr.Substring(1, valueStr.Length - 2);
+            }
+            
             Console.WriteLine($"Input at index {index}: {valueStr}");
-
-            if (file.type == 'I') file[index] = int.Parse(valueStr);
-            else file[index] = valueStr;
+            
+            if (file.type == 'I') {
+                if (int.TryParse(valueStr, out int intValue)) {
+                    file[index] = intValue;
+                }
+                else {
+                    throw new ArgumentException($"Value '{valueStr}' is not a valid integer");
+                }
+            }
+            else {
+                file[index] = valueStr;
+            }
         }
 
         static void HandlePrint(string[] parts, VirtualMemory file) {
+            if (file == null)
+                throw new InvalidOperationException("No file is open. Use 'open' command first.");
+                
             if (parts.Length < 2)
                 throw new ArgumentException("print command requires index");
 
-            string indexStr = parts[1].Trim();
-
-            if (indexStr.StartsWith("("))
-                indexStr = indexStr.Substring(1);
-            if (indexStr.EndsWith(")"))
-                indexStr = indexStr.Substring(0, indexStr.Length - 1);
-
-            if (!int.TryParse(indexStr, out int index))
-                throw new ArgumentException($"Invalid index: {indexStr}");
-
-            Console.WriteLine($"Printing value at index {index}");
-            Console.WriteLine(file[index]);
+            string argsString = string.Join(" ", parts.Skip(1));
+            
+            int openParenIndex = argsString.IndexOf('(');
+            int closeParenIndex = argsString.LastIndexOf(')');
+            
+            if (openParenIndex != -1 && closeParenIndex != -1) {
+                string indexStr = argsString.Substring(openParenIndex + 1, closeParenIndex - openParenIndex - 1).Trim();
+                if (!int.TryParse(indexStr, out int index))
+                    throw new ArgumentException($"Invalid index: '{indexStr}'");
+                
+                Console.WriteLine($"Printing value at index {index}");
+                Console.WriteLine(file[index]);
+            }
+            else {
+                if (!int.TryParse(argsString, out int index))
+                    throw new ArgumentException($"Invalid index: '{argsString}'");
+                
+                Console.WriteLine($"Printing value at index {index}");
+                Console.WriteLine(file[index]);
+            }
         }
 
         static void HandleExit(VirtualMemory? file) {
@@ -587,4 +646,3 @@ namespace Program {
         }
     }
 }
-
