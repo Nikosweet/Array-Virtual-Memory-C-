@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Program {
     class Program {
@@ -451,19 +450,22 @@ namespace Program {
             }
         }
 
-        static string[] ParseCommand(string input) {
-            var result = new List<string>();
+        static string[] ParseCommand(string input)
+        {
+            var result = new System.Collections.Generic.List<string>();
             bool inQuotes = false;
+            bool inPath = false;
             string current = "";
-            
+    
             for (int i = 0; i < input.Length; i++) {
                 char c = input[i];
-                
+        
                 if (c == '"') {
                     inQuotes = !inQuotes;
-                    current += c;
+                    continue;
                 }
-                else if (c == ' ' && !inQuotes) {
+        
+                if (c == ' ' && !inQuotes && !inPath) {
                     if (!string.IsNullOrEmpty(current)) {
                         result.Add(current);
                         current = "";
@@ -473,11 +475,11 @@ namespace Program {
                     current += c;
                 }
             }
-            
+    
             if (!string.IsNullOrEmpty(current)) {
                 result.Add(current);
             }
-            
+    
             return result.ToArray();
         }
 
@@ -498,58 +500,76 @@ namespace Program {
             );
         }
 
-        static void HandleCreate(string[] parts) {
-            if (parts.Length < 2)
-                throw new ArgumentException("create command requires filename with type");
+   static void HandleCreate(string[] parts)
+{
+    if (parts.Length < 2)
+        throw new ArgumentException("create command requires filename with type");
 
-            string fullArg = parts[1];
+    string fullArg = parts[1];
+    
+    // Находим последнюю открывающую скобку (тип всегда в конце)
+    int openParen = fullArg.LastIndexOf('(');
+    int closeParen = fullArg.LastIndexOf(')');
 
-            int openParen = fullArg.IndexOf('(');
-            int closeParen = fullArg.LastIndexOf(')');
+    if (openParen == -1 || closeParen == -1)
+        throw new ArgumentException("Invalid format. Use: filename(type)");
 
-            if (openParen == -1 || closeParen == -1)
-                throw new ArgumentException("Invalid format. Use: filename(type)");
+    // Путь - все до последней открывающей скобки
+    string filePath = fullArg.Substring(0, openParen).Trim();
+    string typePart = fullArg.Substring(openParen + 1, closeParen - openParen - 1).Trim();
+    
+    // Проверяем, существует ли директория
+    string directory = Path.GetDirectoryName(filePath);
+    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+    {
+        Directory.CreateDirectory(directory);
+        Console.WriteLine($"Created directory: {directory}");
+    }
 
-            string filename = fullArg.Substring(0, openParen);
-            string typePart = fullArg.Substring(openParen + 1, closeParen - openParen - 1);
-
-            if (typePart.StartsWith("int")) {
-                Console.WriteLine($"Creating int array file: {filename}");
-                VirtualMemory.CreateFile(filename);
+    Console.WriteLine($"Creating file: {filePath}");
+    
+    if (typePart.StartsWith("int")) {
+        Console.WriteLine($"Creating int array file: {filePath}");
+        VirtualMemory.CreateFile(filePath);
+    }
+    else if (typePart.StartsWith("char")) {
+        int lenParen = typePart.IndexOf('(');
+        int lenCloseParen = typePart.LastIndexOf(')');
+        if (lenParen != -1 && lenCloseParen != -1) {
+            string lengthStr = typePart.Substring(lenParen + 1, lenCloseParen - lenParen - 1);
+            if (int.TryParse(lengthStr, out int length)) {
+                Console.WriteLine($"Creating char({length}) array file: {filePath}");
+                VirtualMemory.CreateFile(filePath, 'C', length);
             }
-            else if (typePart.StartsWith("char")) {
-                int lenParen = typePart.IndexOf('(');
-                int lenCloseParen = typePart.LastIndexOf(')');
-                if (lenParen != -1 && lenCloseParen != -1) {
-                    string lengthStr = typePart.Substring(lenParen + 1, lenCloseParen - lenParen - 1);
-                    if (int.TryParse(lengthStr, out int length)) {
-                        Console.WriteLine($"Creating char({length}) array file: {filename}");
-                        VirtualMemory.CreateFile(filename, 'C', length);
-                    }
-                }
-            }
-            else if (typePart.StartsWith("varchar")) {
-                int lenParen = typePart.IndexOf('(');
-                int lenCloseParen = typePart.LastIndexOf(')');
-                if (lenParen != -1 && lenCloseParen != -1) {
-                    string maxLengthStr = typePart.Substring(lenParen + 1, lenCloseParen - lenParen - 1);
-                    if (int.TryParse(maxLengthStr, out int maxLength)) {
-                        Console.WriteLine($"Creating varchar({maxLength}) array file: {filename}");
-                        VirtualMemory.CreateFile(filename, 'V', maxLength);
-                    }
-                }
-            }
-            else throw new ArgumentException($"Unknown type: {typePart}");
         }
-
-        static VirtualMemory HandleOpen(string[] parts) {
-            if (parts.Length < 2)
-                throw new ArgumentException("open command requires filename");
-
-            string filename = parts[1];
-            Console.WriteLine($"Opening file: {filename}");
-            return new VirtualMemory(filename);
+    }
+    else if (typePart.StartsWith("varchar")) {
+        int lenParen = typePart.IndexOf('(');
+        int lenCloseParen = typePart.LastIndexOf(')');
+        if (lenParen != -1 && lenCloseParen != -1) {
+            string maxLengthStr = typePart.Substring(lenParen + 1, lenCloseParen - lenParen - 1);
+            if (int.TryParse(maxLengthStr, out int maxLength)) {
+                Console.WriteLine($"Creating varchar({maxLength}) array file: {filePath}");
+                VirtualMemory.CreateFile(filePath, 'V', maxLength);
+            }
         }
+    }
+    else throw new ArgumentException($"Unknown type: {typePart}");
+}
+
+static VirtualMemory HandleOpen(string[] parts)
+{
+    if (parts.Length < 2)
+        throw new ArgumentException("open command requires filename");
+
+    string filename = parts[1];
+    
+    if (!File.Exists(filename + ".bin"))
+        throw new FileNotFoundException($"File {filename}.bin not found");
+    
+    Console.WriteLine($"Opening file: {filename}");
+    return new VirtualMemory(filename);
+}
 
         static void HandleInput(string[] parts, VirtualMemory file) {
             if (file == null)
