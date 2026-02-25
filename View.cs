@@ -55,7 +55,7 @@ public static class View {
 
         string fullArg = parts[1];
         
-        int openParen = fullArg.LastIndexOf('(');
+        int openParen = fullArg.IndexOf('(');
         int closeParen = fullArg.LastIndexOf(')');
 
         if (openParen == -1 || closeParen == -1)
@@ -78,10 +78,13 @@ public static class View {
             VirtualMemory.CreateFile(filePath);
         }
         else if (typePart.StartsWith("char")) {
+            Console.WriteLine(1);
             int lenParen = typePart.IndexOf('(');
             int lenCloseParen = typePart.LastIndexOf(')');
+            Console.WriteLine(2);
             if (lenParen != -1 && lenCloseParen != -1) {
                 string lengthStr = typePart.Substring(lenParen + 1, lenCloseParen - lenParen - 1);
+                Console.WriteLine($"3, lengthStr: {lengthStr}, ");
                 if (int.TryParse(lengthStr, out int length)) {
                     Console.WriteLine($"Creating char({length}) array file: {filePath}");
                     VirtualMemory.CreateFile(filePath, 'C', length);
